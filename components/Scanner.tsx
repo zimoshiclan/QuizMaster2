@@ -35,7 +35,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper: Compress and Resize Image
+  // Helper: Compress, Resize, and ENHANCE Image
   const processImage = (file: File): Promise<{ base64: string; mimeType: string; dataUrl: string }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -45,7 +45,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          // Increased resolution to 1600 to capture small ticks/marks better
+          // High resolution for detail
           const MAX_WIDTH = 1600; 
           let width = img.width;
           let height = img.height;
@@ -64,10 +64,17 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             return;
           }
           
+          // CRITICAL: Image Enhancement for Dim Lighting
+          // Increase contrast and brightness to make faint ticks/handwriting visible
+          ctx.filter = 'contrast(1.25) brightness(1.1) saturate(1.1)';
+          
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Convert to JPEG, 0.85 quality for slightly better details
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          // Reset filter just in case
+          ctx.filter = 'none';
+          
+          // Convert to JPEG, 0.9 quality
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
           const base64 = dataUrl.split(',')[1];
           
           resolve({
@@ -122,8 +129,13 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       setExtractedData(data);
     } catch (err) {
       console.error(err);
-      setError("Failed to analyze. Please ensure marks are visible.");
-      // Don't clear image on error so they can see what they took
+      setError("Could not read values. Please edit manually.");
+      setExtractedData({
+        studentName: "Unknown",
+        score: 0,
+        totalMarks: 0,
+        subject: "Quiz"
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -136,10 +148,17 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         { base64: studentData, mimeType: 'image/jpeg' }
       );
       setExtractedData(data);
-    } catch (err) {
-      console.error(err);
-      setError("AI Grading Failed. Ensure the papers are well-lit and the handwriting is legible.");
-      setImage(null); 
+    } catch (err: any) {
+      console.error("Grading Error:", err);
+      setError(err.message || "Grading failed. Please verify the images.");
+      // We do NOT clear the image here, so the user can see what they took.
+      // We provide a fallback empty state so they can manually fill it if AI fails.
+      setExtractedData({
+        studentName: "Check Name",
+        score: 0,
+        totalMarks: 10,
+        subject: "General"
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -192,14 +211,21 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       <div className="flex flex-col h-full bg-slate-50 p-4 animate-fade-in">
         <h2 className="text-2xl font-bold text-slate-800 mb-4">Review {mode === 'GRADE' ? 'Grading' : 'Results'}</h2>
         
-        <div className="mb-6 rounded-xl overflow-hidden shadow-lg border border-slate-200 relative group">
-           <img src={image} alt="Student Paper" className="w-full h-48 object-cover" />
+        <div className="mb-6 rounded-xl overflow-hidden shadow-lg border border-slate-200 relative group bg-black">
+           <img src={image} alt="Student Paper" className="w-full h-48 object-contain opacity-90" />
            {referenceImage && (
-             <div className="absolute top-2 right-2 w-16 h-16 rounded-lg overflow-hidden border-2 border-white shadow-md">
+             <div className="absolute top-2 right-2 w-16 h-16 rounded-lg overflow-hidden border-2 border-white shadow-md bg-black">
                <img src={referenceImage} alt="Key" className="w-full h-full object-cover" />
              </div>
            )}
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 flex items-center gap-2">
+            <span className="material-icons-round text-base">warning</span>
+            {error}
+          </div>
+        )}
 
         <div className="space-y-4 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div>
@@ -301,7 +327,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             <span className="material-icons-round text-6xl text-brand-400 mb-4 animate-spin">smart_toy</span>
             <p className="text-xl font-medium">AI is Grading...</p>
             <p className="text-slate-400 text-sm mt-2">
-              {mode === 'GRADE' ? 'Scanning for ticks & marks...' : 'Reading paper...'}
+              {mode === 'GRADE' ? 'Enhancing image & reading ticks...' : 'Reading paper...'}
             </p>
           </div>
         ) : (
