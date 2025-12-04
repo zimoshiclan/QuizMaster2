@@ -26,11 +26,10 @@
         }
       }
     </script>
-    <!-- Shim for process.env to prevent ReferenceError in browser -->
+    <!-- Safer Shim for process.env -->
     <script>
-      if (typeof process === 'undefined') {
-        window.process = { env: { API_KEY: '' } };
-      }
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
     </script>
     <!-- Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">

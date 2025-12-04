@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getAiClient = () => {
-  // Allow the SDK to handle API key validation internally.
-  // This prevents issues where the key might be injected by a bundler but not visible to a runtime check.
+  // Use the environment variable directly. 
+  // We removed the strict throw to allow the environment's injection or the SDK's internal handling to work without interference.
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
@@ -58,7 +58,7 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
       contents: {
         parts: [
           { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: "Extract the student name, score, total marks, and subject from this quiz paper. Return JSON." },
+          { text: "Extract the student name, score, total marks, and subject from this quiz paper. If the handwriting is messy, make a best guess. Return JSON." },
         ],
       },
       config: {
@@ -89,21 +89,24 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
       contents: {
         parts: [
           { inlineData: { mimeType: reference.mimeType, data: reference.base64 } },
-          { text: "This is the ANSWER KEY." },
+          { text: "This is the ANSWER KEY / QUESTION PAPER." },
           { inlineData: { mimeType: student.mimeType, data: student.base64 } },
           { 
             text: `This is the STUDENT ANSWER SHEET.
             
-            TASK: Perform Optical Character Recognition (OCR) and Grading.
-            1. **Convert Photo to Text**: Read the Student Name, Subject, and all handwritten answers.
-            2. **Identify Marks**: Look specifically for ticks (✓), crosses (✗), or circled options.
-            3. **Compare**: Match the student's answers against the Answer Key.
-            4. **Calculate**: Compute the Score and Total Marks.
+            TASK: Perform robust Optical Character Recognition (OCR) and Grading.
             
-            IMPORTANT:
-            - If the image is blurry or dark, use context to infer the answer position.
-            - Trust the visual position of marks over faint text.
-            - Return the result in strict JSON format.` 
+            STEPS:
+            1. **Analyze Student Paper**: Identify the Student Name and Subject.
+            2. **Read Answers**: For each question from the Answer Key, look for the corresponding answer on the Student Sheet.
+               - Look for ticks (✓), crosses (✗), circled options, or written text.
+               - If lighting is poor or contrast is low, focus on the heaviest ink marks.
+            3. **Grade**: Compare the student's answer with the key.
+            4. **Compute**: Sum up the obtained marks and total marks.
+            
+            OUTPUT:
+            Return a JSON object with: studentName, score, totalMarks, subject.
+            ` 
           },
         ],
       },
@@ -118,6 +121,6 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
 
   } catch (error) {
     console.error("Grading Error:", error);
-    throw error; // Let the caller handle the specific error message
+    throw error;
   }
 };

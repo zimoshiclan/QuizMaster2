@@ -20,9 +20,23 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Load students for autocomplete
+  // Load students for autocomplete & Check API Key
   useEffect(() => {
     StorageService.getStudents().then(setExistingStudents);
+
+    // Auto-prompt for API key if running in AI Studio/IDX environment
+    const checkKey = async () => {
+      // @ts-ignore
+      if (typeof window !== 'undefined' && window.aistudio && window.aistudio.hasSelectedApiKey) {
+        // @ts-ignore
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+             // @ts-ignore
+             await window.aistudio.openSelectKey();
+        }
+      }
+    };
+    checkKey();
   }, []);
   
   // Edit State
@@ -65,6 +79,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
           }
           
           // CRITICAL: Image Enhancement for Dim Lighting
+          // Slightly boost contrast and brightness to help OCR
           ctx.filter = 'contrast(1.25) brightness(1.1) saturate(1.1)';
           ctx.drawImage(img, 0, 0, width, height);
           ctx.filter = 'none';
@@ -124,12 +139,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       const data = await analyzeQuizImage({ base64: base64Data, mimeType });
       setExtractedData(data);
     } catch (err: any) {
-      console.error(err);
-      if (err.toString().includes("API key")) {
-        setError("API Key missing or invalid. Please check your settings.");
-      } else {
-        setError("Could not read values. Please edit manually.");
-      }
+      handleApiError(err);
       setExtractedData({
         studentName: "Unknown",
         score: 0,
@@ -149,13 +159,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       );
       setExtractedData(data);
     } catch (err: any) {
-      console.error("Grading Error:", err);
-      // Specific handling for authentication errors
-      if (err.toString().includes("API key") || err.message?.includes("403") || err.message?.includes("400")) {
-        setError("API Key Error. If deploying, ensure API_KEY env var is set.");
-      } else {
-        setError(err.message || "Grading failed. Please verify the images.");
-      }
+      handleApiError(err);
       
       // We provide a fallback empty state so they can manually fill it if AI fails.
       setExtractedData({
@@ -166,6 +170,25 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       });
     } finally {
       setIsProcessing(false);
+    }
+  };
+  
+  const handleApiError = (err: any) => {
+    console.error("API Error:", err);
+    
+    // Check for common key related errors
+    if (err.message === "API_KEY_MISSING" || err.toString().includes("API key")) {
+      setError("API Key Missing. Please check the Publishing Guide or settings.");
+      // Attempt to open key selector again if possible
+      // @ts-ignore
+      if (typeof window !== 'undefined' && window.aistudio && window.aistudio.openSelectKey) {
+        // @ts-ignore
+        window.aistudio.openSelectKey();
+      }
+    } else if (err.message?.includes("403") || err.message?.includes("400")) {
+      setError("Access Denied. Please check your API Key permissions.");
+    } else {
+      setError("Grading failed. Ensure the image is clear and try again.");
     }
   };
 
