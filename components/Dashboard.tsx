@@ -117,7 +117,7 @@ export const Dashboard: React.FC = () => {
                 />
                 <Bar dataKey="score" radius={[4, 4, 0, 0]}>
                   {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#60a5fa'} />
+                    <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#ec4899' : '#f472b6'} />
                   ))}
                 </Bar>
               </BarChart>

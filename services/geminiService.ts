@@ -35,6 +35,18 @@ interface ImageInput {
   mimeType: string;
 }
 
+// Helper to clean JSON string if model adds markdown blocks
+const cleanJsonString = (str: string) => {
+  if (!str) return "";
+  let clean = str.trim();
+  if (clean.startsWith('```json')) {
+    clean = clean.replace(/^```json/, '').replace(/```$/, '');
+  } else if (clean.startsWith('```')) {
+    clean = clean.replace(/^```/, '').replace(/```$/, '');
+  }
+  return clean;
+};
+
 export const analyzeQuizImage = async (image: ImageInput): Promise<{
   studentName: string;
   score: number;
@@ -68,7 +80,7 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
     const text = response.text;
     if (!text) throw new Error("No response text from AI");
 
-    return JSON.parse(text);
+    return JSON.parse(cleanJsonString(text));
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     throw error;
@@ -85,6 +97,7 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
 
   try {
     // Using gemini-3-pro-preview for advanced reasoning required to compare two documents
+    // It is significantly better at vision tasks involving small details like ticks.
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: {
@@ -105,22 +118,29 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
             },
           },
           {
-            text: "Context: This is the STUDENT'S ANSWER SHEET to be graded.\n\n" + 
-                  "Task: \n" +
-                  "1. Identify the student name from the second image.\n" +
-                  "2. Compare the student's answers carefully against the answer key.\n" +
-                  "3. Calculate the total score obtained based on correct answers.\n" +
-                  "4. Determine the total possible marks.\n" +
-                  "5. Identify the subject.\n\n" +
-                  "Return ONLY the raw JSON object matching the schema."
+            text: `Context: This is the STUDENT'S ANSWER SHEET to be graded.
+            
+            CRITICAL INSTRUCTIONS FOR GRADING:
+            1. **Visual Recognition**: Look specifically for handwritten ticks (✓), checkmarks, circles, or crosses that indicate the student's choice. 
+            2. **Low Light Handling**: If the image is dim, shadowy, or low contrast, use context clues (like the position of pen marks relative to checkboxes/options) to determine the answer.
+            3. **Ambiguity**: If a mark is faint, assume it is an answer if it aligns with an option.
+            4. **Comparison**: Compare the student's marked answers against the provided Answer Key/Reference Paper.
+            5. **Extraction**: Identify the Student Name and Subject clearly.
+            
+            Task:
+            - Grade the paper.
+            - Calculate the Score based on matches with the Key.
+            - Determine the Total Marks.
+            - Extract Student Name and Subject.
+            
+            Return ONLY the raw JSON object.`
           },
         ],
       },
       config: {
         responseMimeType: "application/json",
         responseSchema: RESPONSE_SCHEMA,
-        // Higher thinking budget for complex grading tasks if needed, but start with standard
-        temperature: 0.1, // Lower temperature for more deterministic grading
+        temperature: 0.1, // Lower temperature for deterministic grading
       },
     });
 
@@ -128,7 +148,7 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
     if (!text) throw new Error("No response text from AI");
 
     try {
-      return JSON.parse(text);
+      return JSON.parse(cleanJsonString(text));
     } catch (parseError) {
       console.error("JSON Parse failed. Raw text:", text);
       throw new Error("AI returned invalid data format.");

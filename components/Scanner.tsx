@@ -45,7 +45,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1024; // Limit width to 1024px for AI stability
+          // Increased resolution to 1600 to capture small ticks/marks better
+          const MAX_WIDTH = 1600; 
           let width = img.width;
           let height = img.height;
 
@@ -65,8 +66,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
           
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Convert to JPEG, 0.8 quality
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          // Convert to JPEG, 0.85 quality for slightly better details
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
           const base64 = dataUrl.split(',')[1];
           
           resolve({
@@ -100,7 +101,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             setIsProcessing(false); // Stop processing after first image, wait for second
           } else {
             // Processing Student Paper
-            // Temporarily set image for UI feedback, but it might be cleared if error
             setImage(processed.dataUrl);
             const refBase64 = referenceImage.split(',')[1];
             await processGrading(refBase64, processed.base64);
@@ -138,8 +138,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       setExtractedData(data);
     } catch (err) {
       console.error(err);
-      setError("AI Grading Failed. Try getting closer to the text or using better lighting.");
-      // We keep referenceImage, but maybe clear the failed student image
+      setError("AI Grading Failed. Ensure the papers are well-lit and the handwriting is legible.");
       setImage(null); 
     } finally {
       setIsProcessing(false);
@@ -302,7 +301,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             <span className="material-icons-round text-6xl text-brand-400 mb-4 animate-spin">smart_toy</span>
             <p className="text-xl font-medium">AI is Grading...</p>
             <p className="text-slate-400 text-sm mt-2">
-              {mode === 'GRADE' ? 'Comparing papers (this may take a moment)...' : 'Reading paper...'}
+              {mode === 'GRADE' ? 'Scanning for ticks & marks...' : 'Reading paper...'}
             </p>
           </div>
         ) : (
