@@ -65,12 +65,8 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
           }
           
           // CRITICAL: Image Enhancement for Dim Lighting
-          // Increase contrast and brightness to make faint ticks/handwriting visible
           ctx.filter = 'contrast(1.25) brightness(1.1) saturate(1.1)';
-          
           ctx.drawImage(img, 0, 0, width, height);
-          
-          // Reset filter just in case
           ctx.filter = 'none';
           
           // Convert to JPEG, 0.9 quality
@@ -127,9 +123,13 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
     try {
       const data = await analyzeQuizImage({ base64: base64Data, mimeType });
       setExtractedData(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Could not read values. Please edit manually.");
+      if (err.toString().includes("API key")) {
+        setError("API Key missing or invalid. Please check your settings.");
+      } else {
+        setError("Could not read values. Please edit manually.");
+      }
       setExtractedData({
         studentName: "Unknown",
         score: 0,
@@ -150,8 +150,13 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       setExtractedData(data);
     } catch (err: any) {
       console.error("Grading Error:", err);
-      setError(err.message || "Grading failed. Please verify the images.");
-      // We do NOT clear the image here, so the user can see what they took.
+      // Specific handling for authentication errors
+      if (err.toString().includes("API key") || err.message?.includes("403") || err.message?.includes("400")) {
+        setError("API Key Error. If deploying, ensure API_KEY env var is set.");
+      } else {
+        setError(err.message || "Grading failed. Please verify the images.");
+      }
+      
       // We provide a fallback empty state so they can manually fill it if AI fails.
       setExtractedData({
         studentName: "Check Name",

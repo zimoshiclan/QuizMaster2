@@ -1,9 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getAiClient = () => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key is missing.");
-  }
+  // Allow the SDK to handle API key validation internally.
+  // This prevents issues where the key might be injected by a bundler but not visible to a runtime check.
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
@@ -25,17 +24,13 @@ interface ImageInput {
 }
 
 // ROBUST JSON EXTRACTOR
-// This regex specifically looks for a JSON object structure even if there is text around it.
 const extractJson = (text: string) => {
   try {
-    // 1. Try standard parse first (after simple cleanup)
     let clean = text.trim();
     if (clean.startsWith('```json')) clean = clean.replace(/^```json/, '').replace(/```$/, '');
     else if (clean.startsWith('```')) clean = clean.replace(/^```/, '').replace(/```$/, '');
-    
     return JSON.parse(clean);
   } catch (e) {
-    // 2. Fallback: Regex extraction of the main object
     console.log("JSON Parse failed, attempting Regex extraction...");
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -89,8 +84,6 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
   const ai = getAiClient();
 
   try {
-    // Using gemini-2.5-flash for speed and reliability with direct OCR instructions
-    // We explicitly ask it to TRANSFORM image to text first implicitly by asking for analysis
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash", 
       contents: {
@@ -102,14 +95,14 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
             text: `This is the STUDENT ANSWER SHEET.
             
             TASK: Perform Optical Character Recognition (OCR) and Grading.
-            1. Read the Student Name and Subject.
-            2. For every question, recognize the student's handwritten answer (look for ticks '✓', circles, or written text).
-            3. Compare with the Answer Key.
-            4. Calculate the Final Score.
+            1. **Convert Photo to Text**: Read the Student Name, Subject, and all handwritten answers.
+            2. **Identify Marks**: Look specifically for ticks (✓), crosses (✗), or circled options.
+            3. **Compare**: Match the student's answers against the Answer Key.
+            4. **Calculate**: Compute the Score and Total Marks.
             
             IMPORTANT:
-            - If handwriting is messy or lighting is dim, make your best guess based on the position of the marks.
-            - If a tick is visible near an option, count it as the selected answer.
+            - If the image is blurry or dark, use context to infer the answer position.
+            - Trust the visual position of marks over faint text.
             - Return the result in strict JSON format.` 
           },
         ],
@@ -125,6 +118,6 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
 
   } catch (error) {
     console.error("Grading Error:", error);
-    throw new Error("Grading failed. Please ensure the paper is visible.");
+    throw error; // Let the caller handle the specific error message
   }
 };

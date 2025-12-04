@@ -21,6 +21,13 @@ export const PublishGuide: React.FC<{onBack: () => void}> = ({onBack}) => {
               <strong>Deploy code:</strong> Upload these files to a host like <a href="https://vercel.com" target="_blank" className="text-blue-500 underline">Vercel</a> or <a href="https://netlify.com" target="_blank" className="text-blue-500 underline">Netlify</a> (It's free).
             </li>
             <li>
+              <strong>IMPORTANT - Set API Key:</strong> In your Vercel/Netlify dashboard, go to <strong>Settings &rarr; Environment Variables</strong>. Add a new variable:
+              <ul className="list-disc pl-4 mt-1 text-slate-500">
+                <li>Name: <code>API_KEY</code></li>
+                <li>Value: <code>Your_Google_Gemini_API_Key</code></li>
+              </ul>
+            </li>
+            <li>
               <strong>Open on Phone:</strong> Visit your new website URL on your mobile browser.
             </li>
             <li>
