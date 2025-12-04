@@ -84,8 +84,9 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
   const ai = getAiClient();
 
   try {
+    // Using gemini-3-pro-preview for advanced reasoning required to compare two documents
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-pro-preview",
       contents: {
         parts: [
           {
@@ -95,7 +96,7 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
             },
           },
           {
-            text: "This is the ANSWER KEY or QUESTION PAPER."
+            text: "Context: This is the ANSWER KEY / REFERENCE PAPER."
           },
           {
             inlineData: {
@@ -104,20 +105,34 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
             },
           },
           {
-            text: "This is the STUDENT'S ANSWER SHEET. Task: 1. Identify the student name. 2. Compare the student's answers to the answer key/questions provided in the first image. 3. Grade the paper and calculate the total score based on correctness. 4. Determine total possible marks and subject.",
+            text: "Context: This is the STUDENT'S ANSWER SHEET to be graded.\n\n" + 
+                  "Task: \n" +
+                  "1. Identify the student name from the second image.\n" +
+                  "2. Compare the student's answers carefully against the answer key.\n" +
+                  "3. Calculate the total score obtained based on correct answers.\n" +
+                  "4. Determine the total possible marks.\n" +
+                  "5. Identify the subject.\n\n" +
+                  "Return ONLY the raw JSON object matching the schema."
           },
         ],
       },
       config: {
         responseMimeType: "application/json",
         responseSchema: RESPONSE_SCHEMA,
+        // Higher thinking budget for complex grading tasks if needed, but start with standard
+        temperature: 0.1, // Lower temperature for more deterministic grading
       },
     });
 
     const text = response.text;
     if (!text) throw new Error("No response text from AI");
 
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch (parseError) {
+      console.error("JSON Parse failed. Raw text:", text);
+      throw new Error("AI returned invalid data format.");
+    }
   } catch (error) {
     console.error("Gemini Grading Error:", error);
     throw error;

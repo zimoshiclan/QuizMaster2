@@ -99,10 +99,10 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             setReferenceImage(processed.dataUrl);
             setIsProcessing(false); // Stop processing after first image, wait for second
           } else {
+            // Processing Student Paper
+            // Temporarily set image for UI feedback, but it might be cleared if error
             setImage(processed.dataUrl);
-            // Get reference base64 from state string
             const refBase64 = referenceImage.split(',')[1];
-            // Both are now guaranteed to be image/jpeg from the processor
             await processGrading(refBase64, processed.base64);
           }
         }
@@ -123,6 +123,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
     } catch (err) {
       console.error(err);
       setError("Failed to analyze. Please ensure marks are visible.");
+      // Don't clear image on error so they can see what they took
     } finally {
       setIsProcessing(false);
     }
@@ -130,7 +131,6 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
 
   const processGrading = async (refData: string, studentData: string) => {
     try {
-      // Both inputs are JPEGs from our processor
       const data = await gradeStudentPaper(
         { base64: refData, mimeType: 'image/jpeg' }, 
         { base64: studentData, mimeType: 'image/jpeg' }
@@ -138,7 +138,9 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       setExtractedData(data);
     } catch (err) {
       console.error(err);
-      setError("AI Grading Failed. Try getting closer to the text.");
+      setError("AI Grading Failed. Try getting closer to the text or using better lighting.");
+      // We keep referenceImage, but maybe clear the failed student image
+      setImage(null); 
     } finally {
       setIsProcessing(false);
     }
@@ -164,9 +166,17 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
     }
   };
 
-  const handleRetake = () => {
+  // Full Reset
+  const handleRetakeAll = () => {
     setImage(null);
     setReferenceImage(null);
+    setExtractedData(null);
+    setError(null);
+  };
+
+  // Retake only the student paper (keep key)
+  const handleRetakeStudent = () => {
+    setImage(null);
     setExtractedData(null);
     setError(null);
   };
@@ -242,10 +252,10 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
 
         <div className="mt-auto flex gap-3 pt-6">
           <button 
-            onClick={handleRetake}
+            onClick={handleRetakeAll}
             className="flex-1 py-3 px-4 bg-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
           >
-            Retake
+            New Scan
           </button>
           <button 
             onClick={handleSave}
@@ -270,13 +280,13 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         <div className="absolute top-16 left-0 right-0 z-10 flex justify-center px-6">
           <div className="bg-white/10 backdrop-blur-md p-1 rounded-2xl flex w-full max-w-xs">
             <button 
-              onClick={() => { setMode('EXTRACT'); handleRetake(); }}
+              onClick={() => { setMode('EXTRACT'); handleRetakeAll(); }}
               className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${mode === 'EXTRACT' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'}`}
             >
               Scan Score
             </button>
             <button 
-              onClick={() => { setMode('GRADE'); handleRetake(); }}
+              onClick={() => { setMode('GRADE'); handleRetakeAll(); }}
               className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${mode === 'GRADE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'}`}
             >
               Auto-Grade
@@ -290,9 +300,9 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         {isProcessing ? (
           <div className="flex flex-col items-center animate-pulse">
             <span className="material-icons-round text-6xl text-brand-400 mb-4 animate-spin">smart_toy</span>
-            <p className="text-xl font-medium">AI is Thinking...</p>
+            <p className="text-xl font-medium">AI is Grading...</p>
             <p className="text-slate-400 text-sm mt-2">
-              {mode === 'GRADE' ? 'Compressing & sending to Gemini...' : 'Reading paper...'}
+              {mode === 'GRADE' ? 'Comparing papers (this may take a moment)...' : 'Reading paper...'}
             </p>
           </div>
         ) : (
@@ -324,13 +334,41 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
                 <span className="material-icons-round text-white text-3xl">camera_alt</span>
               </div>
             </button>
+
+            {/* If in grade mode and have ref image, show button to reset just the ref image */}
+            {mode === 'GRADE' && referenceImage && !error && (
+               <button 
+                 onClick={handleRetakeAll}
+                 className="mt-8 text-sm text-slate-400 underline"
+               >
+                 Reset Answer Key
+               </button>
+            )}
           </>
         )}
         
         {error && (
-          <div className="mt-6 p-4 bg-red-500/20 text-red-200 rounded-xl border border-red-500/50 flex items-center gap-2 max-w-sm mx-auto">
-            <span className="material-icons-round">error</span>
-            <span className="text-left text-sm">{error}</span>
+          <div className="mt-6 flex flex-col items-center gap-4">
+             <div className="p-4 bg-red-500/20 text-red-200 rounded-xl border border-red-500/50 flex items-center gap-2 max-w-sm mx-auto text-left">
+              <span className="material-icons-round">error</span>
+              <span className="text-sm">{error}</span>
+            </div>
+            
+            {mode === 'GRADE' && referenceImage ? (
+              <button 
+                onClick={handleRetakeStudent} // Only retake student paper
+                className="px-6 py-2 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200 transition-colors"
+              >
+                Try Student Paper Again
+              </button>
+            ) : (
+              <button 
+                onClick={handleRetakeAll}
+                className="px-6 py-2 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200 transition-colors"
+              >
+                Try Again
+              </button>
+            )}
           </div>
         )}
       </div>
