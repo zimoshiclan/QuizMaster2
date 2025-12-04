@@ -35,56 +35,110 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Helper: Compress and Resize Image
+  const processImage = (file: File): Promise<{ base64: string; mimeType: string; dataUrl: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1024; // Limit width to 1024px for AI stability
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height = height * (MAX_WIDTH / width);
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error("Could not get canvas context"));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Convert to JPEG, 0.8 quality
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          const base64 = dataUrl.split(',')[1];
+          
+          resolve({
+            base64,
+            mimeType: 'image/jpeg',
+            dataUrl
+          });
+        };
+        img.onerror = (err) => reject(new Error("Failed to load image"));
+      };
+      reader.onerror = (err) => reject(new Error("Failed to read file"));
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
+      setIsProcessing(true);
+      setError(null);
+      
+      try {
+        const processed = await processImage(file);
         
         if (mode === 'EXTRACT') {
-          setImage(base64);
-          const base64Data = base64.split(',')[1];
-          processExtraction(base64Data);
+          setImage(processed.dataUrl);
+          await processExtraction(processed.base64, processed.mimeType);
         } else {
           // Auto-Grade Mode logic
           if (!referenceImage) {
-            setReferenceImage(base64);
+            setReferenceImage(processed.dataUrl);
+            setIsProcessing(false); // Stop processing after first image, wait for second
           } else {
-            setImage(base64);
-            const refData = referenceImage.split(',')[1];
-            const studentData = base64.split(',')[1];
-            processGrading(refData, studentData);
+            setImage(processed.dataUrl);
+            // Get reference base64 from state string
+            const refBase64 = referenceImage.split(',')[1];
+            // Both are now guaranteed to be image/jpeg from the processor
+            await processGrading(refBase64, processed.base64);
           }
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to process image. Please try again.");
+        setIsProcessing(false);
+      }
     }
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const processExtraction = async (base64Data: string) => {
-    setIsProcessing(true);
-    setError(null);
+  const processExtraction = async (base64Data: string, mimeType: string) => {
     try {
-      const data = await analyzeQuizImage(base64Data);
+      const data = await analyzeQuizImage({ base64: base64Data, mimeType });
       setExtractedData(data);
     } catch (err) {
-      setError("Failed to analyze image. Please ensure the score is visible.");
+      console.error(err);
+      setError("Failed to analyze. Please ensure marks are visible.");
     } finally {
       setIsProcessing(false);
     }
   };
 
   const processGrading = async (refData: string, studentData: string) => {
-    setIsProcessing(true);
-    setError(null);
     try {
-      const data = await gradeStudentPaper(refData, studentData);
+      // Both inputs are JPEGs from our processor
+      const data = await gradeStudentPaper(
+        { base64: refData, mimeType: 'image/jpeg' }, 
+        { base64: studentData, mimeType: 'image/jpeg' }
+      );
       setExtractedData(data);
     } catch (err) {
-      setError("Failed to grade paper. Ensure both images are clear.");
+      console.error(err);
+      setError("AI Grading Failed. Try getting closer to the text.");
     } finally {
       setIsProcessing(false);
     }
@@ -120,7 +174,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
   // Helper text based on state
   const getPromptText = () => {
     if (mode === 'EXTRACT') return "Take a photo of a graded paper with visible marks.";
-    if (!referenceImage) return "Step 1: Take a photo of the Question Paper or Answer Key.";
+    if (!referenceImage) return "Step 1: Take a photo of the Answer Key / Question Paper.";
     return "Step 2: Take a photo of the Student's Answer Sheet.";
   };
 
@@ -238,7 +292,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             <span className="material-icons-round text-6xl text-brand-400 mb-4 animate-spin">smart_toy</span>
             <p className="text-xl font-medium">AI is Thinking...</p>
             <p className="text-slate-400 text-sm mt-2">
-              {mode === 'GRADE' ? 'Comparing answers to key...' : 'Extracting marks from paper...'}
+              {mode === 'GRADE' ? 'Compressing & sending to Gemini...' : 'Reading paper...'}
             </p>
           </div>
         ) : (
@@ -274,9 +328,9 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         )}
         
         {error && (
-          <div className="mt-6 p-4 bg-red-500/20 text-red-200 rounded-xl border border-red-500/50 flex items-center gap-2">
+          <div className="mt-6 p-4 bg-red-500/20 text-red-200 rounded-xl border border-red-500/50 flex items-center gap-2 max-w-sm mx-auto">
             <span className="material-icons-round">error</span>
-            {error}
+            <span className="text-left text-sm">{error}</span>
           </div>
         )}
       </div>

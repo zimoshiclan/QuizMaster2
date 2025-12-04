@@ -30,7 +30,12 @@ const RESPONSE_SCHEMA = {
   required: ["studentName", "score", "totalMarks", "subject"],
 };
 
-export const analyzeQuizImage = async (base64Image: string): Promise<{
+interface ImageInput {
+  base64: string;
+  mimeType: string;
+}
+
+export const analyzeQuizImage = async (image: ImageInput): Promise<{
   studentName: string;
   score: number;
   totalMarks: number;
@@ -45,8 +50,8 @@ export const analyzeQuizImage = async (base64Image: string): Promise<{
         parts: [
           {
             inlineData: {
-              mimeType: "image/jpeg",
-              data: base64Image,
+              mimeType: image.mimeType,
+              data: image.base64,
             },
           },
           {
@@ -61,7 +66,7 @@ export const analyzeQuizImage = async (base64Image: string): Promise<{
     });
 
     const text = response.text;
-    if (!text) throw new Error("No response from AI");
+    if (!text) throw new Error("No response text from AI");
 
     return JSON.parse(text);
   } catch (error) {
@@ -70,7 +75,7 @@ export const analyzeQuizImage = async (base64Image: string): Promise<{
   }
 };
 
-export const gradeStudentPaper = async (referenceBase64: string, studentBase64: string): Promise<{
+export const gradeStudentPaper = async (reference: ImageInput, student: ImageInput): Promise<{
   studentName: string;
   score: number;
   totalMarks: number;
@@ -85,8 +90,8 @@ export const gradeStudentPaper = async (referenceBase64: string, studentBase64: 
         parts: [
           {
             inlineData: {
-              mimeType: "image/jpeg",
-              data: referenceBase64,
+              mimeType: reference.mimeType,
+              data: reference.base64,
             },
           },
           {
@@ -94,8 +99,8 @@ export const gradeStudentPaper = async (referenceBase64: string, studentBase64: 
           },
           {
             inlineData: {
-              mimeType: "image/jpeg",
-              data: studentBase64,
+              mimeType: student.mimeType,
+              data: student.base64,
             },
           },
           {
@@ -110,7 +115,7 @@ export const gradeStudentPaper = async (referenceBase64: string, studentBase64: 
     });
 
     const text = response.text;
-    if (!text) throw new Error("No response from AI");
+    if (!text) throw new Error("No response text from AI");
 
     return JSON.parse(text);
   } catch (error) {
