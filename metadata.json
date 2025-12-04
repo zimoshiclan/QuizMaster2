@@ -1,0 +1,7 @@
+{
+  "name": "Copy of QuizMaster AI",
+  "description": "AI-powered quiz scanner and student performance tracker. Scan papers, extract marks, and track progress.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "QuizMaster AI Scanner",
+  "short_name": "QuizMaster",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://www.gstatic.com/images/branding/product/2x/forms_2020q4_48dp.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://www.gstatic.com/images/branding/product/2x/forms_2020q4_48dp.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
