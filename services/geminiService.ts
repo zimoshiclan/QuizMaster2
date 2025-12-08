@@ -55,11 +55,11 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", // Upgraded model for better OCR/Reasoning
+      model: "gemini-2.5-flash", 
       contents: {
         parts: [
           { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: "Extract the student name, score, total marks, and subject. CRITICAL: If the 'total marks' are not explicitly written, you MUST calculate the total by summing the max points of all visible questions. If the score is missing, count the ticks/marks. Return raw JSON." },
+          { text: "Extract the student name, score, total marks, and subject. CRITICAL: Look for a handwritten score (like '18/20'). If the 'total marks' are not explicitly written, you MUST calculate the total by summing the max points of all visible questions. If the score is missing, count the ticks/marks. Return raw JSON." },
         ],
       },
       config: {
@@ -128,7 +128,7 @@ export const gradeStudentPaper = async (reference: ImageInput | null, student: I
     parts.push({ text: promptText });
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", 
+      model: "gemini-2.5-flash", 
       contents: { parts },
       config: {
         responseMimeType: "application/json",
