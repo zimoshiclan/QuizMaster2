@@ -1,11 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY_MISSING");
-  }
-  return new GoogleGenAI({ apiKey });
+  // Directly use the environment variable. 
+  // We trust the environment or the build system to provide process.env.API_KEY.
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // Simplified Schema
@@ -61,7 +59,7 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
       contents: {
         parts: [
           { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: "Extract the student name, score, total marks, and subject from this quiz paper. If the handwriting is messy, make a best guess. Return raw JSON only. Do not use markdown." },
+          { text: "Extract the student name, score, total marks, and subject from this quiz paper. If the handwriting is messy, make a best guess. If the score is not explicitly written, count the marks. Return raw JSON only. Do not use markdown." },
         ],
       },
       config: {
@@ -78,7 +76,7 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
   }
 };
 
-export const gradeStudentPaper = async (reference: ImageInput, student: ImageInput): Promise<{
+export const gradeStudentPaper = async (reference: ImageInput | null, student: ImageInput): Promise<{
   studentName: string;
   score: number;
   totalMarks: number;
@@ -87,15 +85,15 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
   const ai = getAiClient();
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", // Upgraded model
-      contents: {
-        parts: [
-          { inlineData: { mimeType: reference.mimeType, data: reference.base64 } },
-          { text: "This is the ANSWER KEY." },
-          { inlineData: { mimeType: student.mimeType, data: student.base64 } },
-          { 
-            text: `This is the STUDENT ANSWER SHEET.
+    const parts = [];
+    let promptText = "";
+
+    if (reference) {
+        // Mode 1: Reference Key Available
+        parts.push({ inlineData: { mimeType: reference.mimeType, data: reference.base64 } });
+        parts.push({ text: "This is the ANSWER KEY." });
+        parts.push({ inlineData: { mimeType: student.mimeType, data: student.base64 } });
+        promptText = `This is the STUDENT ANSWER SHEET.
             
             TASK: Grade the student paper against the answer key.
             
@@ -107,11 +105,30 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
             
             OUTPUT:
             Return a purely JSON object with keys: studentName, score, totalMarks, subject.
-            Do not include markdown formatting.
-            ` 
-          },
-        ],
-      },
+            `;
+    } else {
+        // Mode 2: No Key (AI Knowledge)
+        parts.push({ inlineData: { mimeType: student.mimeType, data: student.base64 } });
+        promptText = `This is a STUDENT QUIZ PAPER.
+            
+            TASK: Auto-grade this quiz based on your general knowledge of the subject.
+            
+            STEPS:
+            1. Read the questions and the student's handwritten answers.
+            2. Determine if each answer is correct.
+            3. Sum up the points for correct answers.
+            4. Extract the Student Name and Subject.
+            
+            OUTPUT:
+            Return a purely JSON object with keys: studentName, score, totalMarks, subject.
+            `;
+    }
+    
+    parts.push({ text: promptText });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview", 
+      contents: { parts },
       config: {
         responseMimeType: "application/json",
         responseSchema: RESPONSE_SCHEMA,

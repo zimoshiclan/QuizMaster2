@@ -13,66 +13,22 @@ type ScanMode = 'EXTRACT' | 'GRADE';
 export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
   const [mode, setMode] = useState<ScanMode>('EXTRACT');
   const [image, setImage] = useState<string | null>(null);
+  
+  // Grading specific state
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [skipReference, setSkipReference] = useState(false);
+  
   const [existingStudents, setExistingStudents] = useState<Student[]>([]);
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [apiKeyReady, setApiKeyReady] = useState(false);
   
-  // Load students & Check API Key
+  // Load students for autocomplete
   useEffect(() => {
     StorageService.getStudents().then(setExistingStudents);
-    checkApiKeyStatus();
   }, []);
 
-  const checkApiKeyStatus = async () => {
-    // 1. Check process.env (Standard)
-    if (process.env.API_KEY && process.env.API_KEY.length > 0) {
-      setApiKeyReady(true);
-      return;
-    }
-
-    // 2. Check AI Studio Environment
-    // @ts-ignore
-    if (typeof window !== 'undefined' && window.aistudio && window.aistudio.hasSelectedApiKey) {
-      // @ts-ignore
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (hasKey) {
-        setApiKeyReady(true);
-      } else {
-        setApiKeyReady(false);
-        // Automatically prompt once
-        // @ts-ignore
-        await window.aistudio.openSelectKey();
-        // Check again after a short delay in case user selected it
-        setTimeout(async () => {
-             // @ts-ignore
-            const recheck = await window.aistudio.hasSelectedApiKey();
-            if (recheck) setApiKeyReady(true);
-        }, 1000);
-      }
-    } else {
-      // If no AI Studio object and no env var, we assume it's missing but let the user try (fallback)
-      // or we can set it to false to force them to configure if we had a manual input.
-      // Since we don't have manual input, we default to true to allow the "API_KEY_MISSING" error to catch it later if it really fails,
-      // but showing a warning is better.
-      setApiKeyReady(false);
-    }
-  };
-
-  const handleConnectApi = async () => {
-    // @ts-ignore
-    if (window.aistudio && window.aistudio.openSelectKey) {
-        // @ts-ignore
-        await window.aistudio.openSelectKey();
-        checkApiKeyStatus();
-    } else {
-        setError("API Key not found. Please set 'API_KEY' in your environment variables.");
-    }
-  };
-  
   // Edit State
   const [extractedData, setExtractedData] = useState<{
     studentName: string;
@@ -110,6 +66,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
             return;
           }
           
+          // Image enhancement for better OCR
           ctx.filter = 'contrast(1.25) brightness(1.1) saturate(1.1)';
           ctx.drawImage(img, 0, 0, width, height);
           ctx.filter = 'none';
@@ -138,13 +95,25 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
           setImage(processed.dataUrl);
           await processExtraction(processed.base64, processed.mimeType);
         } else {
-          if (!referenceImage) {
+          // GRADE MODE
+          if (!referenceImage && !skipReference) {
+            // This is the reference image
             setReferenceImage(processed.dataUrl);
-            setIsProcessing(false);
+            // Don't process yet, wait for student paper
+            setIsProcessing(false); 
           } else {
+            // This is the student paper
             setImage(processed.dataUrl);
-            const refBase64 = referenceImage.split(',')[1];
-            await processGrading(refBase64, processed.base64);
+            
+            const studentInput = { base64: processed.base64, mimeType: processed.mimeType };
+            let refInput = null;
+            
+            if (referenceImage) {
+                 const refBase64 = referenceImage.split(',')[1];
+                 refInput = { base64: refBase64, mimeType: 'image/jpeg' };
+            }
+            
+            await processGrading(refInput, studentInput);
           }
         }
       } catch (err) {
@@ -162,23 +131,19 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
       setExtractedData(data);
     } catch (err: any) {
       handleApiError(err);
-      // Fallback
       setExtractedData({ studentName: "Unknown", score: 0, totalMarks: 100, subject: "Quiz" });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const processGrading = async (refData: string, studentData: string) => {
+  const processGrading = async (refInput: { base64: string, mimeType: string } | null, studentInput: { base64: string, mimeType: string }) => {
     try {
-      const data = await gradeStudentPaper(
-        { base64: refData, mimeType: 'image/jpeg' }, 
-        { base64: studentData, mimeType: 'image/jpeg' }
-      );
+      const data = await gradeStudentPaper(refInput, studentInput);
       setExtractedData(data);
     } catch (err: any) {
       handleApiError(err);
-      setExtractedData({ studentName: "Check Name", score: 0, totalMarks: 10, subject: "General" });
+      setExtractedData({ studentName: "Unknown", score: 0, totalMarks: 10, subject: "General" });
     } finally {
       setIsProcessing(false);
     }
@@ -186,13 +151,12 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
   
   const handleApiError = (err: any) => {
     console.error("API Error:", err);
-    if (err.message === "API_KEY_MISSING" || err.toString().includes("API key")) {
-      setError("API Key Missing. Please click 'Connect Service' or check settings.");
-      setApiKeyReady(false); // Force UI update
+    if (err.message?.includes("API key")) {
+      setError("API Key Error. Please check your setup.");
     } else if (err.message?.includes("403")) {
-      setError("Access Denied (403). API Key may be invalid.");
+      setError("Access Denied. Check API permissions.");
     } else {
-      setError(`Analysis failed: ${err.message || 'Unknown error'}`);
+      setError("Analysis failed. Please try again.");
     }
   };
 
@@ -208,7 +172,17 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
           date: new Date().toISOString().split('T')[0],
           imageUrl: image || undefined
         });
-        onSuccess();
+        // On success, we don't close immediately in grade mode to allow next student
+        if (mode === 'GRADE') {
+             // Reset student data but keep reference
+             setExtractedData(null);
+             setImage(null);
+             setIsSaving(false);
+             // Show success toast or small indicator?
+             // For now just reset
+        } else {
+            onSuccess();
+        }
       } catch (err) {
         setError("Failed to save record.");
         setIsSaving(false);
@@ -219,14 +193,17 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
   const handleRetakeAll = () => {
     setImage(null);
     setReferenceImage(null);
+    setSkipReference(false);
     setExtractedData(null);
     setError(null);
   };
 
-  const handleRetakeStudent = () => {
+  const handleNextStudent = () => {
+    // Keep referenceImage and skipReference settings
     setImage(null);
     setExtractedData(null);
     setError(null);
+    setIsSaving(false);
   };
 
   if (image && extractedData) {
@@ -295,24 +272,38 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
           </div>
         </div>
 
-        <div className="mt-auto flex gap-3 pt-6">
-          <button 
-            onClick={handleRetakeAll}
-            className="flex-1 py-3 px-4 bg-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
-          >
-            New Scan
-          </button>
-          <button 
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex-1 py-3 px-4 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 shadow-lg shadow-brand-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center"
-          >
-            {isSaving ? <span className="material-icons-round animate-spin">refresh</span> : 'Save Record'}
-          </button>
+        <div className="mt-auto flex flex-col gap-3 pt-6">
+          <div className="flex gap-3">
+             <button 
+                onClick={handleRetakeAll}
+                className="flex-1 py-3 px-4 bg-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+             >
+                Reset All
+             </button>
+             <button 
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex-1 py-3 px-4 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 shadow-lg shadow-brand-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center"
+             >
+                {isSaving ? <span className="material-icons-round animate-spin">refresh</span> : (mode === 'GRADE' ? 'Save & Next Student' : 'Save Record')}
+             </button>
+          </div>
+          {mode === 'GRADE' && (
+             <p className="text-center text-xs text-slate-400">
+               Clicking 'Save & Next' keeps the answer key for the next student.
+             </p>
+          )}
         </div>
       </div>
     );
   }
+
+  // Helper to determine step message
+  const getStepMessage = () => {
+      if (mode === 'EXTRACT') return "Take a photo of a graded paper with visible marks.";
+      if (referenceImage || skipReference) return "Take a photo of the Student's Answer Sheet.";
+      return "Step 1: Take a photo of the Answer Key.";
+  };
 
   return (
     <div className="flex flex-col h-full bg-slate-900 text-white relative">
@@ -345,14 +336,13 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
         ) : (
           <>
             <span className="material-icons-round text-6xl text-slate-500 mb-6">
-              {mode === 'GRADE' && !referenceImage ? 'assignment' : 'document_scanner'}
+              {mode === 'GRADE' && !referenceImage && !skipReference ? 'assignment_turned_in' : 'document_scanner'}
             </span>
             <h2 className="text-2xl font-bold mb-2">
-              {mode === 'GRADE' && !referenceImage ? 'Scan Answer Key' : (mode === 'GRADE' ? 'Scan Student Paper' : 'Scan Quiz Paper')}
+              {mode === 'GRADE' && !referenceImage && !skipReference ? 'Scan Answer Key' : (mode === 'GRADE' ? 'Scan Student Paper' : 'Scan Quiz Paper')}
             </h2>
             <p className="text-slate-400 max-w-xs mx-auto mb-8 min-h-[3rem]">
-              {mode === 'EXTRACT' ? "Take a photo of a graded paper with visible marks." : 
-               (!referenceImage ? "Step 1: Take a photo of the Answer Key." : "Step 2: Take a photo of the Student's Answer Sheet.")}
+              {getStepMessage()}
             </p>
             
             <input 
@@ -364,28 +354,29 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
               onChange={handleFileChange}
             />
             
-            {!apiKeyReady ? (
-               <button 
-                 onClick={handleConnectApi}
-                 className="px-6 py-4 bg-brand-600 rounded-xl font-bold hover:bg-brand-700 transition-colors shadow-lg shadow-brand-500/20 flex items-center gap-2"
-               >
-                 <span className="material-icons-round">vpn_key</span>
-                 Connect AI Service
-               </button>
-            ) : (
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="w-20 h-20 bg-white rounded-full border-4 border-slate-300 flex items-center justify-center hover:scale-105 transition-transform shadow-xl shadow-brand-500/20 group"
-              >
-                <div className="w-16 h-16 bg-brand-500 rounded-full group-hover:bg-brand-600 transition-colors flex items-center justify-center">
-                  <span className="material-icons-round text-white text-3xl">camera_alt</span>
-                </div>
-              </button>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="w-20 h-20 bg-white rounded-full border-4 border-slate-300 flex items-center justify-center hover:scale-105 transition-transform shadow-xl shadow-brand-500/20 group relative z-20"
+            >
+              <div className="w-16 h-16 bg-brand-500 rounded-full group-hover:bg-brand-600 transition-colors flex items-center justify-center">
+                <span className="material-icons-round text-white text-3xl">camera_alt</span>
+              </div>
+            </button>
+            
+            {/* Alternative Action for Grade Mode (Step 1) */}
+            {mode === 'GRADE' && !referenceImage && !skipReference && (
+                <button 
+                  onClick={() => setSkipReference(true)}
+                  className="mt-8 py-2 px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm font-medium text-slate-300 transition-colors"
+                >
+                  Skip Key (AI Auto-Grade)
+                </button>
             )}
 
-            {mode === 'GRADE' && referenceImage && !error && apiKeyReady && (
-               <button onClick={handleRetakeAll} className="mt-8 text-sm text-slate-400 underline">
-                 Reset Answer Key
+            {/* Reset Actions */}
+            {mode === 'GRADE' && (referenceImage || skipReference) && !error && (
+               <button onClick={handleRetakeAll} className="mt-8 text-sm text-slate-400 underline hover:text-white transition-colors">
+                 Reset Grading Session
                </button>
             )}
           </>
