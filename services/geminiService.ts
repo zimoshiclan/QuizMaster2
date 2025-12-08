@@ -1,9 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const getAiClient = () => {
-  // Use the environment variable directly. 
-  // We removed the strict throw to allow the environment's injection or the SDK's internal handling to work without interference.
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY_MISSING");
+  }
+  return new GoogleGenAI({ apiKey });
 };
 
 // Simplified Schema
@@ -26,21 +28,22 @@ interface ImageInput {
 // ROBUST JSON EXTRACTOR
 const extractJson = (text: string) => {
   try {
+    // Remove markdown code blocks if present
     let clean = text.trim();
-    if (clean.startsWith('```json')) clean = clean.replace(/^```json/, '').replace(/```$/, '');
-    else if (clean.startsWith('```')) clean = clean.replace(/^```/, '').replace(/```$/, '');
+    clean = clean.replace(/```json/g, '').replace(/```/g, '');
+    
+    // Find the first opening brace and last closing brace
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      clean = clean.substring(firstBrace, lastBrace + 1);
+    }
+    
     return JSON.parse(clean);
   } catch (e) {
-    console.log("JSON Parse failed, attempting Regex extraction...");
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[0]);
-      } catch (e2) {
-        throw new Error("Could not extract valid JSON from response");
-      }
-    }
-    throw new Error("No JSON found in response");
+    console.error("JSON Parse failed:", text);
+    throw new Error("AI response was not valid JSON. Please try again.");
   }
 };
 
@@ -54,11 +57,11 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-pro-preview", // Upgraded model for better OCR/Reasoning
       contents: {
         parts: [
           { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: "Extract the student name, score, total marks, and subject from this quiz paper. If the handwriting is messy, make a best guess. Return JSON." },
+          { text: "Extract the student name, score, total marks, and subject from this quiz paper. If the handwriting is messy, make a best guess. Return raw JSON only. Do not use markdown." },
         ],
       },
       config: {
@@ -85,27 +88,26 @@ export const gradeStudentPaper = async (reference: ImageInput, student: ImageInp
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", 
+      model: "gemini-3-pro-preview", // Upgraded model
       contents: {
         parts: [
           { inlineData: { mimeType: reference.mimeType, data: reference.base64 } },
-          { text: "This is the ANSWER KEY / QUESTION PAPER." },
+          { text: "This is the ANSWER KEY." },
           { inlineData: { mimeType: student.mimeType, data: student.base64 } },
           { 
             text: `This is the STUDENT ANSWER SHEET.
             
-            TASK: Perform robust Optical Character Recognition (OCR) and Grading.
+            TASK: Grade the student paper against the answer key.
             
             STEPS:
-            1. **Analyze Student Paper**: Identify the Student Name and Subject.
-            2. **Read Answers**: For each question from the Answer Key, look for the corresponding answer on the Student Sheet.
-               - Look for ticks (✓), crosses (✗), circled options, or written text.
-               - If lighting is poor or contrast is low, focus on the heaviest ink marks.
-            3. **Grade**: Compare the student's answer with the key.
-            4. **Compute**: Sum up the obtained marks and total marks.
+            1. Identify the Student Name and Subject from the answer sheet.
+            2. Compare every answer on the student sheet with the key.
+            3. Count the correct answers (ticks) or points.
+            4. Calculate the final score.
             
             OUTPUT:
-            Return a JSON object with: studentName, score, totalMarks, subject.
+            Return a purely JSON object with keys: studentName, score, totalMarks, subject.
+            Do not include markdown formatting.
             ` 
           },
         ],

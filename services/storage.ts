@@ -142,5 +142,33 @@ export const StorageService = {
     return quizzes
       .filter(q => q.studentId === studentId)
       .sort((a, b) => b.timestamp - a.timestamp);
+  },
+
+  deleteStudent: async (studentId: string): Promise<void> => {
+    try {
+      // 1. Get quizzes to identify IDs that need to be deleted
+      const quizzes = await StorageService.getQuizzes();
+      const quizzesToDelete = quizzes.filter(q => q.studentId === studentId);
+
+      const db = await openDB();
+      // Transaction on both stores to ensure clean deletion
+      const transaction = db.transaction([STORE_STUDENTS, STORE_QUIZZES], 'readwrite');
+      
+      const studentStore = transaction.objectStore(STORE_STUDENTS);
+      studentStore.delete(studentId);
+
+      const quizStore = transaction.objectStore(STORE_QUIZZES);
+      quizzesToDelete.forEach(q => {
+        quizStore.delete(q.id);
+      });
+
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   }
 };
