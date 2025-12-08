@@ -246,6 +246,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
               <label className="block text-sm font-medium text-slate-500 mb-1">Score</label>
               <input 
                 type="number" 
+                step="0.5"
                 value={extractedData.score}
                 onChange={(e) => setExtractedData({...extractedData, score: Number(e.target.value)})}
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
@@ -255,6 +256,7 @@ export const Scanner: React.FC<ScannerProps> = ({ onCancel, onSuccess }) => {
               <label className="block text-sm font-medium text-slate-500 mb-1">Total</label>
               <input 
                 type="number" 
+                step="0.5"
                 value={extractedData.totalMarks}
                 onChange={(e) => setExtractedData({...extractedData, totalMarks: Number(e.target.value)})}
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"

@@ -59,7 +59,7 @@ export const analyzeQuizImage = async (image: ImageInput): Promise<{
       contents: {
         parts: [
           { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: "Extract the student name, score, total marks, and subject from this quiz paper. If the handwriting is messy, make a best guess. If the score is not explicitly written, count the marks. Return raw JSON only. Do not use markdown." },
+          { text: "Extract the student name, score, total marks, and subject. CRITICAL: If the 'total marks' are not explicitly written, you MUST calculate the total by summing the max points of all visible questions. If the score is missing, count the ticks/marks. Return raw JSON." },
         ],
       },
       config: {
@@ -97,11 +97,11 @@ export const gradeStudentPaper = async (reference: ImageInput | null, student: I
             
             TASK: Grade the student paper against the answer key.
             
-            STEPS:
-            1. Identify the Student Name and Subject from the answer sheet.
+            CRITICAL STEPS:
+            1. Identify the Student Name and Subject.
             2. Compare every answer on the student sheet with the key.
-            3. Count the correct answers (ticks) or points.
-            4. Calculate the final score.
+            3. Count the points for correct answers to get the 'score'.
+            4. IMPORTANT: Calculate 'totalMarks' by summing the points of ALL questions on the quiz (even if the student got them wrong).
             
             OUTPUT:
             Return a purely JSON object with keys: studentName, score, totalMarks, subject.
@@ -111,13 +111,14 @@ export const gradeStudentPaper = async (reference: ImageInput | null, student: I
         parts.push({ inlineData: { mimeType: student.mimeType, data: student.base64 } });
         promptText = `This is a STUDENT QUIZ PAPER.
             
-            TASK: Auto-grade this quiz based on your general knowledge of the subject.
+            TASK: Auto-grade this quiz based on your general knowledge.
             
-            STEPS:
+            CRITICAL STEPS:
             1. Read the questions and the student's handwritten answers.
-            2. Determine if each answer is correct.
-            3. Sum up the points for correct answers.
-            4. Extract the Student Name and Subject.
+            2. Verify if answers are correct.
+            3. Calculate 'score' by summing points for correct answers.
+            4. IMPORTANT: Calculate 'totalMarks' by summing the max points of ALL visible questions.
+            5. Extract Student Name and Subject.
             
             OUTPUT:
             Return a purely JSON object with keys: studentName, score, totalMarks, subject.
